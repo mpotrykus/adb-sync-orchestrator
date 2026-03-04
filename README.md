@@ -22,8 +22,9 @@ adb devices
 - projects.json — list of local projects and target paths on devices. Also local and git-ignored.
 
 Example minimal entries:
+
+devices.json
 ```json
-// devices.json
 {
     "devices": [{
             "name": "MyPhone",
@@ -36,8 +37,9 @@ Example minimal entries:
     ]
 }
 ```
+
+projects.json
 ```json
-// projects.json
 {
     "projectsDirectory": "C:\\path\\to\\projects",
     "projects": [{
