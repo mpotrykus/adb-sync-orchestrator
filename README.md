@@ -21,7 +21,7 @@ adb devices
 - devices.json — per-device entries (device id / serial, optional labels). This file is local and git-ignored.
 - projects.json — list of local projects and target paths on devices. Also local and git-ignored.
 
-Example minimal entries:
+Example json configs:
 
 devices.json
 ```json
