@@ -50,5 +50,6 @@ function Merge-ToMaster {
     param([string]$fromPath, [string]$masterPath, [string]$logFile)
     Test-Folder $masterPath
     Write-Host "Merging $fromPath -> $masterPath"
-    unison $masterPath $fromPath -batch -prefer newer | Out-File -Append $logFile
+    Write-Host "Calling 'unison $masterPath $fromPath -batch -prefer newer | Out-File -Append $logFile'"
+    unison "$masterPath" "$fromPath" -batch -prefer newer | Out-File -Append $logFile
 }

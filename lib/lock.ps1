@@ -11,33 +11,77 @@ function Get-ProjectLockPath {
 }
 
 function Get-SyncLock {
-    param([string]$projectRoot, [int]$maxLockAgeHr = 4)
+    param([string]$projectRoot)
 
+    $stagingRoot = Get-ProjectStagingRoot $projectRoot
     $lockFile = Get-ProjectLockPath $projectRoot
 
-    if (Test-Path $lockFile) {
-        $age = (Get-Date) - (Get-Item $lockFile).LastWriteTime
-        if ($age.TotalHours -lt $maxLockAgeHr) {
-            Write-Host "Another sync appears to be running for project $projectRoot. Skipping."
-            return $false
-        }
-
-        Write-Warning "Stale lock detected for $projectRoot. Recovering..."
-        Remove-Item (Get-ProjectStagingRoot $projectRoot) -Recurse -Force -ErrorAction SilentlyContinue
-        Remove-Item $lockFile -Force
-        Test-Folder (Get-ProjectStagingRoot $projectRoot)
-    }
-
+    # helper to create a new lock
+    function New-Lock {
+        Test-Folder $stagingRoot
 @"
 pid=$PID
 start=$(Get-Date -Format o)
-"@ | Set-Content $lockFile
+"@ | Set-Content -Path $lockFile -Encoding UTF8
+        return $true
+    }
 
-    return $true
+    # read lock file if present (fail-safe)
+    $lockContent = $null
+    if (Test-Path $lockFile) {
+        try {
+            $lockContent = Get-Content $lockFile -Raw -ErrorAction Stop
+        } catch {
+            Manage-Info "Unable to read lock file. Removing corrupt lock..."
+            if (Test-Path $lockFile) { Remove-Item $lockFile -Force -ErrorAction SilentlyContinue }
+            if (Test-Path $stagingRoot) { Remove-Item $stagingRoot -Recurse -Force -ErrorAction SilentlyContinue }
+            Test-Folder $stagingRoot
+            $lockContent = $null
+        }
+    }
+
+    if (-not $lockContent) { return New-Lock }
+
+    # validate pid entry
+    if (-not ($lockContent -match 'pid=(\d+)')) {
+        Manage-Info "Lock file is invalid. Removing lock for resume..."
+        if (Test-Path $lockFile) { Remove-Item $lockFile -Force -ErrorAction SilentlyContinue }
+        Test-Folder $stagingRoot
+        return New-Lock
+    }
+
+    $lockPid = [int]$matches[1]
+
+    # try parse start time (optional)
+    $lockStart = $null
+    if ($lockContent -match 'start=(.+)') {
+        try { $lockStart = [datetime]::Parse($matches[1].Trim()) } catch { $lockStart = $null }
+    }
+
+    # check process
+    $proc = Get-Process -Id $lockPid -ErrorAction SilentlyContinue
+    if (-not $proc) {
+        Manage-Info "Lock held by PID $lockPid which is not running. Recovering lock..."
+        if (Test-Path $stagingRoot) { Remove-Item $stagingRoot -Recurse -Force -ErrorAction SilentlyContinue }
+        if (Test-Path $lockFile) { Remove-Item $lockFile -Force -ErrorAction SilentlyContinue }
+        Test-Folder $stagingRoot
+        return New-Lock
+    }
+
+    # process is running; respect lock unless it's stale
+    if ($lockStart) {
+
+        Write-Host "Lock held by PID $lockPid. Respecting lock."
+        return $false
+    }
+
+    Write-Host "Lock held by PID $lockPid; start time unparsable. Respecting lock."
+    return $false
 }
 
 function Remove-SyncLock {
     param([string]$projectRoot)
+    if ([string]::IsNullOrWhiteSpace($projectRoot)) { return }
     $lockFile = Get-ProjectLockPath $projectRoot
     if (Test-Path $lockFile) { Remove-Item $lockFile -Force }
 }

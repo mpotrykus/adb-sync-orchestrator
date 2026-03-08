@@ -12,8 +12,20 @@ function Get-ConnectedPortForIp {
     return $null
 }
 
+function Ensure-ADBServer {
+    try {
+        # This is safe to call even if the server is already running
+        adb start-server | Out-Null
+    }
+    catch {
+        throw "Failed to start ADB server: $_"
+    }
+}
+
 function Ensure-DeviceConnected {
     param([object]$device)
+
+    Ensure-ADBServer
 
     $ip = $device.ip
     if (-not $ip) {
