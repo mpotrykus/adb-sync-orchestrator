@@ -11,7 +11,10 @@ function Get-ProjectLockPath {
 }
 
 function Get-SyncLock {
-    param([string]$projectRoot)
+    param(
+        [string]$projectRoot,
+        [int]$maxLockAgeHours = 4
+    )
 
     $stagingRoot = Get-ProjectStagingRoot $projectRoot
     $lockFile = Get-ProjectLockPath $projectRoot
@@ -58,6 +61,18 @@ start=$(Get-Date -Format o)
         try { $lockStart = [datetime]::Parse($matches[1].Trim()) } catch { $lockStart = $null }
     }
 
+    # expire locks older than 4 hours
+    if ($lockStart) {
+        $age = (Get-Date) - $lockStart
+        if ($age.TotalHours -gt $maxLockAgeHours) {
+            Manage-Info ("Lock held by PID {0} expired (age: {1:N2}h). Recovering lock..." -f $lockPid, $age.TotalHours)
+            if (Test-Path $stagingRoot) { Remove-Item $stagingRoot -Recurse -Force -ErrorAction SilentlyContinue }
+            if (Test-Path $lockFile) { Remove-Item $lockFile -Force -ErrorAction SilentlyContinue }
+            Test-Folder $stagingRoot
+            return New-Lock
+        }
+    }
+
     # check process
     $proc = Get-Process -Id $lockPid -ErrorAction SilentlyContinue
     if (-not $proc) {
@@ -68,7 +83,7 @@ start=$(Get-Date -Format o)
         return New-Lock
     }
 
-    # process is running; respect lock unless it's stale
+    # process is running; respect lock unless it's stale (already handled above)
     if ($lockStart) {
 
         Write-Host "Lock held by PID $lockPid. Respecting lock."

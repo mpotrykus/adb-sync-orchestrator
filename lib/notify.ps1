@@ -13,11 +13,17 @@ function New-TrayIcon {
 
     $icon = New-Object System.Windows.Forms.NotifyIcon
 
+    # prefer explicit IconPath, else fall back to assets\connect.ico, else system info icon
     if ($IconPath -and (Test-Path $IconPath)) {
         $icon.Icon = New-Object System.Drawing.Icon($IconPath)
     }
     else {
-        $icon.Icon = [System.Drawing.SystemIcons]::Information
+        $defaultConnect = Join-Path $PSScriptRoot 'assets\connect.ico'
+        if (Test-Path $defaultConnect) {
+            try { $icon.Icon = New-Object System.Drawing.Icon($defaultConnect) } catch { $icon.Icon = [System.Drawing.SystemIcons]::Information }
+        } else {
+            $icon.Icon = [System.Drawing.SystemIcons]::Information
+        }
     }
 
     $icon.Text = $Tooltip
@@ -88,4 +94,34 @@ function Update-TrayTooltip {
 
     $global:TrayIcon.Text = $Tooltip
     $global:TrayIcon.Visible = $true
+}
+
+# Set the tray icon based on a named stage. Looks for .ico files in ./assets by default.
+function Set-TrayIconStage {
+    param(
+        [ValidateSet('connect','pull','merge','push','success','error','default')][string]$Stage = 'default',
+        [string]$AssetsDir = (Join-Path $PSScriptRoot 'assets')
+    )
+
+    if (-not $global:TrayIcon) { return }
+
+    $fileName = switch ($Stage) {
+        'connect'  { 'connect.ico' }
+        'pull'     { 'pull.ico' }
+        'merge'    { 'merge.ico' }
+        'push'     { 'push.ico' }
+        'success'  { 'success.ico' }
+        'error'    { 'error.ico' }
+        default    { 'connect.ico' }
+    }
+
+    $path = Join-Path $AssetsDir $fileName
+    if (Test-Path $path) {
+        try {
+            $global:TrayIcon.Icon = New-Object System.Drawing.Icon($path)
+            $global:TrayIcon.Visible = $true
+        } catch {
+            # ignore icon swap failures
+        }
+    }
 }

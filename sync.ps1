@@ -1,7 +1,11 @@
 param(
     [string]$BaseDir = $PSScriptRoot,
-    [switch]$Headless
+    [switch]$Headless,
+    [switch]$Notify
 )
+
+$log = Join-Path $PSScriptRoot "sync.log"
+Start-Transcript -Path $log -Append
 
 $ErrorActionPreference = "Stop"
 
@@ -21,6 +25,7 @@ $global:Headless = $Headless.IsPresent
 trap {
     $err = $_
     try {
+        Set-TrayIconStage -Stage 'error' | Out-Null
         Manage-Error -Message ($err.Exception.Message) -ExceptionMessage ($err.Exception.InnerException.Message)
         Close-TrayIcon
     } catch { }
@@ -45,6 +50,9 @@ function Complete-Project {
     Write-Host "=================="
     Write-Host ""
     if ($RemoveLock -and -not [string]::IsNullOrWhiteSpace($ProjectRoot)) { Remove-SyncLock $ProjectRoot }
+
+    # indicate success visually
+    try { Set-TrayIconStage -Stage 'success' | Out-Null } catch {}
 }
 
 function Initialize-Sync {
@@ -61,6 +69,7 @@ function Initialize-Sync {
     Start-SleepCheckpoint -CheckpointFile $checkpointFile
 
     New-TrayIcon -MakeGlobal -Tooltip "ADB Sync" | Out-Null
+    Set-TrayIconStage -Stage 'connect' | Out-Null
     Update-TrayTooltip -Tooltip "ADB Sync: starting" | Out-Null
 
     $resumeResp = Prompt-ResumeSync -CheckpointFile $checkpointFile -Projects $projects -Headless:$Headless
@@ -203,6 +212,7 @@ function Pull-ProjectDevices {
                             -DeviceSerials $DeviceSerials
 
         Manage-Info "Pulling from $($device.name)..."
+        Set-TrayIconStage -Stage 'pull' | Out-Null
         Update-TrayTooltip -Tooltip ("Pulling: {0} @ {1}" -f $Project.name, $device.name) | Out-Null
         $remotePathForPull = Convert-PathForContents $pd.remotePath
 
@@ -215,10 +225,12 @@ function Pull-ProjectDevices {
                        -delete
 
         Manage-Info "Merging into master..."
+        Set-TrayIconStage -Stage 'merge' | Out-Null
         Update-TrayTooltip -Tooltip ("Merging: {0} @ {1}" -f $Project.name, $device.name) | Out-Null
         Merge-ToMaster $deviceMirrorPath $MasterPath $logFile
 
         Manage-Info "Saving last complete state for $($device.name)..."
+        Set-TrayIconStage -Stage 'success' | Out-Null
         Update-TrayTooltip -Tooltip ("Saving state: {0} @ {1}" -f $Project.name, $device.name) | Out-Null
         $lastCompleteRoot = Join-Path $ProjectRoot ".sync_last_complete"
         Test-Folder $lastCompleteRoot
@@ -283,6 +295,7 @@ function Push-ProjectDevices {
                             -DeviceSerials $DeviceSerials
 
         Manage-Info "Pushing master -> $($device.name)..."
+        Set-TrayIconStage -Stage 'push' | Out-Null
         Update-TrayTooltip -Tooltip ("Pushing: {0} -> {1}" -f $Project.name, $device.name) | Out-Null
         $sourcePathForPush = Convert-PathForContents $MasterPath
         $destPathForPush   = Convert-PathForContents $pd.remotePath
@@ -384,9 +397,11 @@ try {
     Close-TrayIcon
 }
 catch {
+    Set-TrayIconStage -Stage 'error' | Out-Null
     Manage-Error -Message "An unhandled error occurred: $_" -ExceptionMessage $_.Exception.Message
 }
 finally {
     Stop-SleepCheckpoint
     if (Test-Path $init.checkpointFile) { Remove-Item $init.checkpointFile -ErrorAction SilentlyContinue }
+    Stop-Transcript
 }
